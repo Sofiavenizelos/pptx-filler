@@ -16,13 +16,29 @@ ORDERING_ROW_FIELDS = [
 ]
 
 
+import re
+
 def fill_text_frame(text_frame, data):
     for para in text_frame.paragraphs:
-        for run in para.runs:
-            for key, val in data.items():
-                tag = f"{{{{{key}}}}}"
-                if tag in run.text:
-                    run.text = run.text.replace(tag, "" if val is None else str(val))
+        if not para.runs:
+            continue
+        # Join all run text in this paragraph into one string
+        full_text = "".join(run.text for run in para.runs)
+        if "{{" not in full_text:
+            continue
+
+        # Replace every {{tag}} found in the combined paragraph text
+        def replace_tag(match):
+            key = match.group(1)
+            return str(data.get(key, "")) if key in data else match.group(0)
+
+        new_text = re.sub(r"\{\{(\w+)\}\}", replace_tag, full_text)
+
+        if new_text != full_text:
+            # Put all the new text in the first run, clear the rest
+            para.runs[0].text = new_text
+            for run in para.runs[1:]:
+                run.text = ""
 
 
 def fill_table(table, data):
