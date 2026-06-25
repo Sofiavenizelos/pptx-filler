@@ -1,6 +1,6 @@
 import os
 import io
-import copy
+import re
 from flask import Flask, request, send_file, jsonify
 from pptx import Presentation
 
@@ -8,26 +8,16 @@ app = Flask(__name__)
 
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "template.pptx")
 
-# Groups of tag prefixes that form one "ordering table" row.
-# If ALL fields in a row are empty, that row gets deleted from the table.
-ORDERING_ROW_FIELDS = [
-    ["part_number_{i}", "part_description_{i}", "compatibility_{i}", "branded_equiv_{i}"]
-    for i in range(1, 5)
-]
-
-
-import re
 
 def fill_text_frame(text_frame, data):
+    """Replace {{tag}} placeholders even when split across multiple runs."""
     for para in text_frame.paragraphs:
         if not para.runs:
             continue
-        # Join all run text in this paragraph into one string
         full_text = "".join(run.text for run in para.runs)
         if "{{" not in full_text:
             continue
 
-        # Replace every {{tag}} found in the combined paragraph text
         def replace_tag(match):
             key = match.group(1)
             return str(data.get(key, "")) if key in data else match.group(0)
@@ -35,7 +25,6 @@ def fill_text_frame(text_frame, data):
         new_text = re.sub(r"\{\{(\w+)\}\}", replace_tag, full_text)
 
         if new_text != full_text:
-            # Put all the new text in the first run, clear the rest
             para.runs[0].text = new_text
             for run in para.runs[1:]:
                 run.text = ""
@@ -47,30 +36,45 @@ def fill_table(table, data):
             fill_text_frame(cell.text_frame, data)
 
 
-def remove_empty_ordering_rows(prs, data):
-    """Delete rows in any table where all 4 ordering fields for that row index are empty."""
-    for row_index, field_templates in enumerate(ORDERING_ROW_FIELDS, start=1):
-        field_names = [f.format(i=row_index) for f in field_templates]
-        values = [data.get(f, "") for f in field_names]
-        row_is_empty = all(v == "" or v is None for v in values)
-        if not row_is_empty:
-            continue
+def remove_fully_empty_rows(prs):
+    """
+    After filling, scan every table on every slide. For any row (other than
+    the first row, assumed to be a header) where ALL cells are blank once
+    trimmed, delete that row. Works generically across any table — spec
+    tables, ordering tables, lane-wavelength tables, etc.
+    """
+    for slide in prs.slides:
+        for shape in slide.shapes:
+            if not shape.has_table:
+                continue
+            table = shape.table
+            rows = list(table.rows)
+            if len(rows) < 2:
+                continue  # nothing to trim if there's only a header row
 
-        # Find a table row that originally contained these tags (now filled with "")
-        # and remove it. We match by checking if the row's cells are now blank
-        # AND the row is part of a 4-row ordering table (heuristic: table has 4+ rows).
-        for slide in prs.slides:
-            for shape in slide.shapes:
-                if not shape.has_table:
-                    continue
-                table = shape.table
-                if len(table.rows) < 4:
-                    continue  # not the ordering table
-                # Walk rows from bottom to top so removal doesn't shift indices we still need
-                for tr in list(table.rows)[::-1]:
-                    cell_texts = [c.text.strip() for c in tr.cells]
-                    if all(t == "" for t in cell_texts):
-                        tr._tr.getparent().remove(tr._tr)
+            for tr in rows[1:][::-1]:
+                cell_texts = [c.text.strip() for c in tr.cells]
+                if all(t == "" for t in cell_texts):
+                    tr._tr.getparent().remove(tr._tr)
+
+
+def remove_empty_tables(prs):
+    """
+    After row-removal, delete any table shape left with only its header row
+    (or no rows at all) — meaning every data row in it was empty and got
+    stripped out. This handles cases like an L4-L7 lane table that's
+    entirely unused for a 4-lane product.
+    """
+    for slide in prs.slides:
+        shapes_to_remove = []
+        for shape in slide.shapes:
+            if not shape.has_table:
+                continue
+            table = shape.table
+            if len(table.rows) <= 1:
+                shapes_to_remove.append(shape)
+        for shape in shapes_to_remove:
+            shape._element.getparent().remove(shape._element)
 
 
 def fill_template(data):
@@ -83,7 +87,8 @@ def fill_template(data):
             if shape.has_table:
                 fill_table(shape.table, data)
 
-    remove_empty_ordering_rows(prs, data)
+    remove_fully_empty_rows(prs)
+    remove_empty_tables(prs)
 
     buf = io.BytesIO()
     prs.save(buf)
