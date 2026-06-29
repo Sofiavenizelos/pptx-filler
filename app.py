@@ -14,23 +14,21 @@ def fill_text_frame(text_frame, data):
     for para in text_frame.paragraphs:
         if not para.runs:
             continue
-
         full_text = "".join(run.text for run in para.runs)
-
         if "{{" not in full_text:
             continue
 
         def replace_tag(match):
-            tag = match.group(1)
-            return data.get(tag, "")
+            key = match.group(1)
+            if key == "technical_drawing":
+                return match.group(0)  # leave this tag untouched
+            return str(data.get(key, ""))
 
         new_text = re.sub(r"\{\{(\w+)\}\}", replace_tag, full_text)
-
         if new_text != full_text:
             para.runs[0].text = new_text
             for run in para.runs[1:]:
                 run.text = ""
-
 
 def fill_table(table, data):
     for row in table.rows:
