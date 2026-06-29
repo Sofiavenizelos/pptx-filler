@@ -99,7 +99,7 @@ def generate():
         file_buf = fill_template(data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    filename = f"{data.get('part_number_1', 'datasheet')}.pptx"
+    filename = f"{data.get('part_number_1') or 'datasheet'}.pptx"
     return send_file(
         file_buf,
         as_attachment=True,
