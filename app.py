@@ -18,10 +18,8 @@ def fill_text_frame(text_frame, data):
             continue
 
        def replace_tag(match):
-           key = match.group(1)
-           if key == "technical_drawing":
-           return match.group(0)  # leave this tag untouched
-       return str(data.get(key, ""))
+    tag = match.group(1)
+    return data.get(tag, "")  # ← All spaces, consistent indentation
 
         new_text = re.sub(r"\{\{(\w+)\}\}", replace_tag, full_text)
         if new_text != full_text:
