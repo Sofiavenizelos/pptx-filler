@@ -5,7 +5,7 @@ from flask import Flask, request, send_file, jsonify
 from pptx import Presentation
 
 app = Flask(__name__)
-TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "Template.pptx")
+TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "template.pptx")
 
 
 def fill_text_frame(text_frame, data):
