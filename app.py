@@ -5,7 +5,6 @@ from flask import Flask, request, send_file, jsonify
 from pptx import Presentation
 
 app = Flask(__name__)
-
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "template.pptx")
 
 
@@ -20,10 +19,9 @@ def fill_text_frame(text_frame, data):
 
         def replace_tag(match):
             key = match.group(1)
-            return str(data.get(key, "")) if key in data else match.group(0)
+            return str(data.get(key, ""))
 
         new_text = re.sub(r"\{\{(\w+)\}\}", replace_tag, full_text)
-
         if new_text != full_text:
             para.runs[0].text = new_text
             for run in para.runs[1:]:
@@ -51,7 +49,6 @@ def remove_fully_empty_rows(prs):
             rows = list(table.rows)
             if len(rows) < 2:
                 continue  # nothing to trim if there's only a header row
-
             for tr in rows[1:][::-1]:
                 cell_texts = [c.text.strip() for c in tr.cells]
                 if all(t == "" for t in cell_texts):
@@ -79,17 +76,14 @@ def remove_empty_tables(prs):
 
 def fill_template(data):
     prs = Presentation(TEMPLATE_PATH)
-
     for slide in prs.slides:
         for shape in slide.shapes:
             if shape.has_text_frame:
                 fill_text_frame(shape.text_frame, data)
             if shape.has_table:
                 fill_table(shape.table, data)
-
     remove_fully_empty_rows(prs)
     remove_empty_tables(prs)
-
     buf = io.BytesIO()
     prs.save(buf)
     buf.seek(0)
@@ -101,12 +95,10 @@ def generate():
     data = request.get_json(silent=True)
     if not data:
         return jsonify({"error": "No JSON body received"}), 400
-
     try:
         file_buf = fill_template(data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
     filename = f"{data.get('part_number_1', 'datasheet')}.pptx"
     return send_file(
         file_buf,
